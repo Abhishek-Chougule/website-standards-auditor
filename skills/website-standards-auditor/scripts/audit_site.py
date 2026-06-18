@@ -17,6 +17,8 @@ What it checks:
 - External image, video, audio, font, and media references (RESIL-03).
 - The repository .gitignore against the bundled organization standard.
 - Tracked secret files, when the tree is a git repository.
+- Form field validation: phone, email, date, number/range, password, file, URL,
+  label association, required attributes, and maxlength on text inputs.
 
 Usage:
     python3 audit_site.py --path <repo-root> --out <findings.json>
@@ -54,6 +56,12 @@ TEXT_EXTS = {
 MARKUP_EXTS = {
     ".html", ".htm", ".jsx", ".tsx", ".vue", ".svelte", ".astro", ".ejs",
     ".njk", ".hbs", ".liquid", ".php", ".md", ".mdx",
+}
+
+# Extensions scanned for form validation issues (superset of MARKUP_EXTS).
+FORM_EXTS = {
+    ".html", ".htm", ".jsx", ".tsx", ".vue", ".svelte", ".astro", ".ejs",
+    ".njk", ".hbs", ".liquid", ".php",
 }
 
 # Media file extensions used to spot external media references.
@@ -315,6 +323,240 @@ def scan_files(root):
     }
 
 
+# ---------------------------------------------------------------------------
+# Form validation detection helpers
+# ---------------------------------------------------------------------------
+
+# Matches any <input ... > or JSX-style Input component tag (single line).
+_INPUT_TAG   = re.compile(r"<(?:input|Input)\b([^>]*?)/?>" , re.I | re.S)
+# Matches self-closing or opening <textarea ...>.
+_TEXTAREA_TAG= re.compile(r"<(?:textarea|Textarea)\b([^>]*)>", re.I | re.S)
+# Matches <label ...> with a for= or htmlFor= attribute (counts labelled fields).
+_LABEL_FOR   = re.compile(r"<label\b[^>]*(?:for|htmlFor)\s*=\s*['\"][^'\"]+['\"][^>]*>", re.I)
+# Matches <form ...> tags.
+_FORM_TAG    = re.compile(r"<(?:form|Form)\b[^>]*>", re.I)
+
+
+def _attr(attrs_str, *names):
+    """Return the lowercase value of the first matching attribute, or ''."""
+    for name in names:
+        m = re.search(
+            r"\b" + re.escape(name) + r"\s*[=:]\s*[{'\"]?([^\s,}>'\"]+)['\"}]?",
+            attrs_str, re.I,
+        )
+        if m:
+            return m.group(1).lower().strip(",}{ '\"")
+    return ""
+
+
+def _has_attr(attrs_str, *names):
+    """Return True if any of the given attribute names appear in the tag."""
+    for name in names:
+        if re.search(r"\b" + re.escape(name) + r"\b", attrs_str, re.I):
+            return True
+    return False
+
+
+# Keywords in name/id/placeholder that suggest a specific semantic field type.
+_PHONE_KEYWORDS    = re.compile(r"phone|mobile|tel|cell|contact.?num", re.I)
+_EMAIL_KEYWORDS    = re.compile(r"email|e.?mail", re.I)
+_DATE_KEYWORDS     = re.compile(r"date|dob|birth|year|month|day|expir", re.I)
+_PASSWORD_KEYWORDS = re.compile(r"password|passwd|pwd", re.I)
+_URL_KEYWORDS      = re.compile(r"\burl\b|website|homepage|link", re.I)
+_NUMBER_KEYWORDS   = re.compile(
+    r"age|weight|height|quantity|qty|amount|price|cost|count|number|num\b"
+    r"|score|rating|zip|postal|pin|budget|distance|size|capacity", re.I)
+_TEXT_KEYWORDS     = re.compile(r"name|title|city|street|address|company|firm|org", re.I)
+_MANDATORY_KEYWORDS= re.compile(r"required|mandatory", re.I)
+
+
+def detect_form_validation(root, all_files):
+    """
+    Scan markup files for common form field validation gaps.
+
+    Checks performed:
+      - Phone fields: type='tel', pattern, minlength, maxlength.
+      - Email fields: type='email' (not type='text').
+      - Date fields: type='date' / 'datetime-local' (not type='text').
+      - Number fields: type='number', min (no negatives), max, step for range.
+      - Password fields: type='password', minlength, autocomplete.
+      - URL fields: type='url' (not type='text').
+      - File inputs: accept attribute.
+      - Text inputs: maxlength on named text fields.
+      - Autocomplete on email and tel fields.
+      - required / aria-required on fields whose name suggests they are mandatory.
+      - Textarea: minlength and maxlength.
+
+    Returns a dict with:
+        issues        list of dicts: file, line, field_type, issue, snippet
+        forms_found   int
+        inputs_found  int
+        labels_found  int
+        unlabeled_est int  (inputs_found - labels_found, floored at 0)
+        truncated     bool
+    """
+    issues = []
+    forms_found  = 0
+    inputs_found = 0
+    labels_found = 0
+
+    def _add(file_rel, lineno, field_type, issue, snippet):
+        if len(issues) < OCCURRENCE_CAP:
+            issues.append({
+                "file": file_rel, "line": lineno,
+                "field_type": field_type, "issue": issue,
+                "snippet": snippet[:160],
+            })
+
+    for path in all_files:
+        if path.suffix.lower() not in FORM_EXTS:
+            continue
+        content = read_text(path)
+        if not content:
+            continue
+
+        forms_found  += len(_FORM_TAG.findall(content))
+        labels_found += len(_LABEL_FOR.findall(content))
+        relpath = rel(path, root)
+
+        for pat, field_kind in (
+            (_INPUT_TAG,    "input"),
+            (_TEXTAREA_TAG, "textarea"),
+        ):
+            for m in pat.finditer(content):
+                attrs   = m.group(1)
+                lineno  = content[:m.start()].count("\n") + 1
+                snippet = m.group(0)[:160]
+                ftype   = _attr(attrs, "type")
+                name_id = " ".join(filter(None, [
+                    _attr(attrs, "name"), _attr(attrs, "id"),
+                    _attr(attrs, "placeholder"),
+                ]))
+
+                if field_kind == "input":
+                    inputs_found += 1
+
+                    # Phone / mobile
+                    if ftype == "tel" or _PHONE_KEYWORDS.search(name_id):
+                        if ftype not in ("tel", "number"):
+                            _add(relpath, lineno, "phone",
+                                 "phone/mobile field uses type='text' instead of type='tel'",
+                                 snippet)
+                        if not _has_attr(attrs, "pattern"):
+                            _add(relpath, lineno, "phone",
+                                 "phone field missing pattern attribute for format validation",
+                                 snippet)
+                        if not (_has_attr(attrs, "minlength") or _has_attr(attrs, "min")):
+                            _add(relpath, lineno, "phone",
+                                 "phone field missing minlength (recommend 7)",
+                                 snippet)
+                        if not (_has_attr(attrs, "maxlength") or _has_attr(attrs, "max")):
+                            _add(relpath, lineno, "phone",
+                                 "phone field missing maxlength (recommend 15 per E.164)",
+                                 snippet)
+
+                    # Email
+                    elif _EMAIL_KEYWORDS.search(name_id) and ftype != "email":
+                        _add(relpath, lineno, "email",
+                             "email field uses type='text' instead of type='email'",
+                             snippet)
+
+                    # Date
+                    elif _DATE_KEYWORDS.search(name_id) and ftype not in (
+                            "date", "datetime-local", "month", "week"):
+                        _add(relpath, lineno, "date",
+                             "date field uses type='text'; use type='date' or 'datetime-local'",
+                             snippet)
+
+                    # Number / range
+                    elif ftype in ("number", "range") or _NUMBER_KEYWORDS.search(name_id):
+                        if ftype not in ("number", "range"):
+                            _add(relpath, lineno, "number",
+                                 "numeric field uses type='text' instead of type='number'",
+                                 snippet)
+                        if not _has_attr(attrs, "min"):
+                            _add(relpath, lineno, "number",
+                                 "number field missing min attribute (prevents negative values where inappropriate)",
+                                 snippet)
+                        if not _has_attr(attrs, "max"):
+                            _add(relpath, lineno, "number",
+                                 "number field missing max attribute",
+                                 snippet)
+                        if ftype == "range" and not _has_attr(attrs, "step"):
+                            _add(relpath, lineno, "range",
+                                 "range field missing step attribute",
+                                 snippet)
+
+                    # Password
+                    elif ftype == "password" or _PASSWORD_KEYWORDS.search(name_id):
+                        if ftype != "password":
+                            _add(relpath, lineno, "password",
+                                 "password field uses type='text' instead of type='password'",
+                                 snippet)
+                        if not _has_attr(attrs, "minlength"):
+                            _add(relpath, lineno, "password",
+                                 "password field missing minlength attribute (recommend 8+)",
+                                 snippet)
+                        if not _has_attr(attrs, "autocomplete"):
+                            _add(relpath, lineno, "password",
+                                 "password field missing autocomplete='new-password' or 'current-password'",
+                                 snippet)
+
+                    # URL
+                    elif _URL_KEYWORDS.search(name_id) and ftype != "url":
+                        _add(relpath, lineno, "url",
+                             "URL field uses type='text' instead of type='url'",
+                             snippet)
+
+                    # File: accept
+                    if ftype == "file" and not _has_attr(attrs, "accept"):
+                        _add(relpath, lineno, "file",
+                             "file input missing accept attribute (restricts allowed file types)",
+                             snippet)
+
+                    # Text inputs: maxlength
+                    if ftype in ("", "text", "search") and _TEXT_KEYWORDS.search(name_id):
+                        if not _has_attr(attrs, "maxlength"):
+                            _add(relpath, lineno, "text",
+                                 "text input missing maxlength to prevent excessively long input",
+                                 snippet)
+
+                    # Autocomplete on email / tel
+                    if ftype in ("email", "tel") and not _has_attr(attrs, "autocomplete"):
+                        _add(relpath, lineno, ftype,
+                             f"type='{ftype}' field missing autocomplete attribute (improves UX and autofill)",
+                             snippet)
+
+                    # required / aria-required for semantically mandatory fields
+                    if _MANDATORY_KEYWORDS.search(name_id):
+                        if not (_has_attr(attrs, "required") or
+                                _has_attr(attrs, "aria-required")):
+                            _add(relpath, lineno, ftype or "input",
+                                 "field name/id suggests it is required but required or aria-required is absent",
+                                 snippet)
+
+                elif field_kind == "textarea":
+                    inputs_found += 1
+                    if not _has_attr(attrs, "maxlength"):
+                        _add(relpath, lineno, "textarea",
+                             "textarea missing maxlength attribute",
+                             snippet)
+                    if not _has_attr(attrs, "minlength"):
+                        _add(relpath, lineno, "textarea",
+                             "textarea missing minlength attribute",
+                             snippet)
+
+    unlabeled_est = max(0, inputs_found - labels_found)
+    return {
+        "issues": issues,
+        "forms_found":   forms_found,
+        "inputs_found":  inputs_found,
+        "labels_found":  labels_found,
+        "unlabeled_est": unlabeled_est,
+        "truncated":     len(issues) >= OCCURRENCE_CAP,
+    }
+
+
 def detect_privacy_page(root, all_files):
     """Return list of privacy page candidates and whether a footer link was found."""
     privacy_names = {"privacy", "privacy-policy", "privacy_policy", "datenschutz"}
@@ -441,9 +683,10 @@ def check_tracked_secrets(root):
 
 def build_findings(scan, gi, secrets, root):
     findings = []
-    privacy_info  = detect_privacy_page(root, scan["all_files"])
-    terms_info    = detect_terms_page(root, scan["all_files"])
-    caching_info  = detect_caching_config(root, scan["all_files"])
+    privacy_info       = detect_privacy_page(root, scan["all_files"])
+    terms_info         = detect_terms_page(root, scan["all_files"])
+    caching_info       = detect_caching_config(root, scan["all_files"])
+    form_validation    = detect_form_validation(root, scan["all_files"])
 
     def add(fid, category, criterion, status, severity, evidence, recommendation, info_required=""):
         findings.append({
@@ -685,6 +928,83 @@ def build_findings(scan, gi, secrets, root):
         add("PERF-05", "Performance", "Caching configuration",
             "Gap", "High", "no caching config file found (_headers, vercel.json, netlify.toml, nginx conf, .htaccess)",
             "Add a caching config per references/website_criteria.md PERF-05 with immutable headers for versioned assets and no-cache for HTML.")
+
+    # Form validation.
+    fv = form_validation
+    if fv["forms_found"] == 0:
+        add("FORM-01", "Form validation", "Form fields present",
+            "Not applicable", "Medium", "no <form> tags detected in scanned markup files",
+            "No form fields to validate. If forms are added later, re-run the audit.")
+    else:
+        fv_issues = fv["issues"]
+        by_type = {}
+        for iss in fv_issues:
+            by_type.setdefault(iss["field_type"], []).append(iss)
+
+        def _form_add(fid, criterion, ftype, rec):
+            hits = by_type.get(ftype, [])
+            if hits:
+                sample = "; ".join(f"{h['file']}:{h['line']} {h['issue']}" for h in hits[:3])
+                suffix = f" (+{len(hits)-3} more)" if len(hits) > 3 else ""
+                add(fid, "Form validation", criterion,
+                    "Gap", "High", f"{len(hits)} issue(s): {sample}{suffix}", rec)
+            else:
+                add(fid, "Form validation", criterion,
+                    "Pass", "High", "no issues detected by static scan", rec)
+
+        _form_add("FORM-01", "Phone/mobile field validation",
+                  "phone",
+                  "Use type='tel', add pattern='[+]?[0-9]{7,15}' (or locale-specific), minlength=7, maxlength=15.")
+        _form_add("FORM-02", "Email field type",
+                  "email",
+                  "Use type='email' and add autocomplete='email'.")
+        _form_add("FORM-03", "Date/time field type",
+                  "date",
+                  "Use type='date', type='datetime-local', type='month', or type='week' instead of type='text'.")
+        _form_add("FORM-04", "Number field bounds (min, max)",
+                  "number",
+                  "Add min (e.g. min='0' for weight/age/quantity to prevent negatives) and max. Use step for ranges.")
+        _form_add("FORM-05", "Password field security",
+                  "password",
+                  "Use type='password', add minlength='8', and autocomplete='new-password' or 'current-password'.")
+        _form_add("FORM-06", "URL field type",
+                  "url",
+                  "Use type='url' for website/link fields; the browser validates the URL format automatically.")
+        _form_add("FORM-07", "File input accept attribute",
+                  "file",
+                  "Add accept='.pdf,.jpg,.png' (or appropriate MIME types) to restrict uploaded file types.")
+        _form_add("FORM-08", "Text field maxlength",
+                  "text",
+                  "Add maxlength to name, address, city, and similar text fields to cap input length.")
+        _form_add("FORM-09", "Textarea length limits",
+                  "textarea",
+                  "Add minlength and maxlength to textarea elements.")
+
+        # Label association (unlabeled inputs).
+        if fv["unlabeled_est"] > 0:
+            add("FORM-10", "Form validation", "Form field label association",
+                "Gap", "High",
+                f"estimated {fv['unlabeled_est']} input(s) without an associated <label for=...> or aria-label "
+                f"({fv['inputs_found']} inputs found, {fv['labels_found']} label[for] found)",
+                "Every visible input must have a <label for='id'> or aria-label / aria-labelledby for accessibility.")
+        else:
+            add("FORM-10", "Form validation", "Form field label association",
+                "Needs review", "High",
+                f"{fv['inputs_found']} inputs found, {fv['labels_found']} label[for] found; static count may undercount JSX aria-label usage",
+                "Confirm every input has a visible label or aria-label in the rendered DOM.")
+
+        # Required field marking.
+        req_hits = [i for i in fv_issues if "required" in i["issue"]]
+        if req_hits:
+            sample = "; ".join(f"{h['file']}:{h['line']}" for h in req_hits[:3])
+            add("FORM-11", "Form validation", "Required field attributes",
+                "Gap", "Medium",
+                f"{len(req_hits)} field(s) appear mandatory by name but lack required or aria-required: {sample}",
+                "Add required (or aria-required='true') to all mandatory fields so the browser enforces them.")
+        else:
+            add("FORM-11", "Form validation", "Required field attributes",
+                "Pass", "Medium", "no missing required attributes detected by static scan",
+                "Confirm all mandatory fields have required or aria-required in the rendered DOM.")
 
     # Style rules.
     em_total = scan["em_dash"]["total"]
