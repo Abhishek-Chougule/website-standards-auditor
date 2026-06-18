@@ -73,6 +73,12 @@ MEDIA_HOSTS = (
     "google.com/maps", "maps.googleapis.com",
 )
 
+# Image extensions used for WebP conversion classification.
+IMAGE_EXTS = {"png", "jpg", "jpeg", "gif", "webp", "avif", "svg", "ico", "bmp"}
+VIDEO_EXTS = {"mp4", "webm", "mov", "ogg", "ogv"}
+AUDIO_EXTS = {"mp3", "wav", "m4a", "aac", "flac"}
+FONT_EXTS  = {"woff", "woff2", "ttf", "otf", "eot"}
+
 EM_DASH = "\u2014"
 EN_DASH = "\u2013"
 
@@ -175,6 +181,15 @@ SIGNAL_PATTERNS = {
     "analytics": re.compile(r"gtag\(|googletagmanager\.com|google-analytics\.com", re.I),
     "search_console": re.compile(r"google-site-verification", re.I),
     "lang_attr": re.compile(r"<html[^>]*\blang=", re.I),
+    # E-E-A-T and AISEO signals.
+    "author_signal": re.compile(
+        r'rel=[\'"]author[\'"]|itemprop=[\'"]author[\'"]|article:author'
+        r'|[\'"]@type[\'"]\s*:\s*[\'"]Person[\'"]|class=[\'"][^\'"]*(author|byline)[^\'"]', re.I),
+    "date_signal": re.compile(
+        r"datePublished|dateModified|<time[^>]+datetime|article:published_time", re.I),
+    "cite_signal": re.compile(r"<cite|<blockquote[^>]+cite=", re.I),
+    "https_base": re.compile(r'<base[^>]+href=[\'"]http://', re.I),
+    "mixed_content": re.compile(r'src=[\'"]http://|href=[\'"]http://', re.I),
 }
 
 URL_IN_ATTR = re.compile(r"""(?:src|href|content)\s*=\s*['"]([^'"]+)['"]""", re.I)
@@ -192,6 +207,27 @@ def url_is_external_media(url):
         return True
     base = low.split("?", 1)[0].split("#", 1)[0]
     return any(base.endswith("." + ext) for ext in MEDIA_EXTS)
+
+
+def classify_media_type(url):
+    """Return image, video, audio, font, or other for an external media URL."""
+    base = url.lower().split("?", 1)[0].split("#", 1)[0]
+    ext = base.rsplit(".", 1)[-1] if "." in base else ""
+    if ext in IMAGE_EXTS:
+        return "image"
+    if ext in VIDEO_EXTS:
+        return "video"
+    if ext in AUDIO_EXTS:
+        return "audio"
+    if ext in FONT_EXTS:
+        return "font"
+    # Classify by host if extension is ambiguous.
+    low = url.lower()
+    if any(h in low for h in ("fonts.googleapis.com", "fonts.gstatic.com", "use.typekit.net")):
+        return "font"
+    if any(h in low for h in ("youtube.com", "youtu.be", "vimeo.com", "youtube-nocookie.com")):
+        return "video"
+    return "other"
 
 
 def scan_files(root):
@@ -232,6 +268,7 @@ def scan_files(root):
                                 external_media_hits.append({
                                     "file": relpath, "line": lineno,
                                     "url": m.group(1).strip()[:200],
+                                    "media_type": classify_media_type(m.group(1)),
                                 })
                 for m in SRCSET.finditer(line):
                     for candidate in m.group(1).split(","):
@@ -239,7 +276,9 @@ def scan_files(root):
                         if url_is_external_media(u):
                             if len(external_media_hits) < OCCURRENCE_CAP:
                                 external_media_hits.append({
-                                    "file": relpath, "line": lineno, "url": u[:200],
+                                    "file": relpath, "line": lineno,
+                                    "url": u[:200],
+                                    "media_type": classify_media_type(u),
                                 })
 
         # Em dash, en dash, emoji.
@@ -274,6 +313,69 @@ def scan_files(root):
         "external_media": {"shown": external_media_hits,
                            "truncated": len(external_media_hits) >= OCCURRENCE_CAP},
     }
+
+
+def detect_privacy_page(root, all_files):
+    """Return list of privacy page candidates and whether a footer link was found."""
+    privacy_names = {"privacy", "privacy-policy", "privacy_policy", "datenschutz"}
+    pages = []
+    footer_link = False
+    footer_re = re.compile(r"privacy|datenschutz", re.I)
+    for p in all_files:
+        stem = p.stem.lower()
+        if stem in privacy_names and p.suffix.lower() in MARKUP_EXTS:
+            pages.append(rel(p, root))
+        # Check markup files for footer privacy links.
+        if p.suffix.lower() in MARKUP_EXTS and not footer_link:
+            content = read_text(p)
+            if content and footer_re.search(content):
+                # Heuristic: if the word appears near a </footer> or role="contentinfo"
+                low = content.lower()
+                if "</footer>" in low or 'role="contentinfo"' in low or "role='contentinfo'" in low:
+                    footer_link = True
+    return {"pages": pages, "footer_link_found": footer_link}
+
+
+def detect_terms_page(root, all_files):
+    """Return list of terms page candidates and whether a footer link was found."""
+    terms_names = {
+        "terms", "terms-of-service", "terms_of_service",
+        "terms-and-conditions", "terms_and_conditions", "tos", "agb",
+    }
+    pages = []
+    footer_link = False
+    footer_re = re.compile(r"terms|tos|agb", re.I)
+    for p in all_files:
+        stem = p.stem.lower()
+        if stem in terms_names and p.suffix.lower() in MARKUP_EXTS:
+            pages.append(rel(p, root))
+        if p.suffix.lower() in MARKUP_EXTS and not footer_link:
+            content = read_text(p)
+            if content and footer_re.search(content):
+                low = content.lower()
+                if "</footer>" in low or 'role="contentinfo"' in low or "role='contentinfo'" in low:
+                    footer_link = True
+    return {"pages": pages, "footer_link_found": footer_link}
+
+
+def detect_caching_config(root, all_files):
+    """Return a dict describing which caching config files were found."""
+    config_names = {
+        "_headers", "vercel.json", "netlify.toml",
+        "next.config.js", "next.config.mjs", "next.config.ts",
+        ".htaccess",
+    }
+    nginx_re = re.compile(r"cache-control|expires|add_header", re.I)
+    found = []
+    for p in all_files:
+        name = p.name.lower()
+        if name in config_names:
+            found.append(rel(p, root))
+        elif name.endswith(".conf") or name.endswith(".nginx"):
+            content = read_text(p)
+            if content and nginx_re.search(content):
+                found.append(rel(p, root))
+    return {"configs": found}
 
 
 def load_standard_patterns():
@@ -339,6 +441,9 @@ def check_tracked_secrets(root):
 
 def build_findings(scan, gi, secrets, root):
     findings = []
+    privacy_info  = detect_privacy_page(root, scan["all_files"])
+    terms_info    = detect_terms_page(root, scan["all_files"])
+    caching_info  = detect_caching_config(root, scan["all_files"])
 
     def add(fid, category, criterion, status, severity, evidence, recommendation, info_required=""):
         findings.append({
@@ -397,15 +502,41 @@ def build_findings(scan, gi, secrets, root):
 
     em = scan["external_media"]["shown"]
     if em:
-        sample = "; ".join(f"{h['file']}:{h['line']} {h['url']}" for h in em[:5])
+        sample = "; ".join(f"{h['file']}:{h['line']} [{h.get('media_type','?')}] {h['url']}" for h in em[:5])
         suffix = " (more, see JSON)" if scan["external_media"]["truncated"] or len(em) > 5 else ""
         add("RESIL-03", "Resilience", "No external image/video/media links",
             "Gap", "High", f"{len(em)} external media reference(s); e.g. {sample}{suffix}",
-            "Self host the media and fonts; replace third party embeds; use relative or same origin URLs.")
+            "Use scripts/download_media.py to self-host: images are converted to WebP, videos downloaded as-is, fonts downloaded and referenced locally.")
     else:
         add("RESIL-03", "Resilience", "No external image/video/media links",
             "Pass", "High", "no external media references detected in scanned files",
             "No action; keep media self hosted.")
+
+    # Privacy page (RESIL-04).
+    if privacy_info["pages"]:
+        add("RESIL-04", "Resilience", "Privacy page",
+            "Needs review", "Medium",
+            "found: " + ", ".join(privacy_info["pages"]) +
+            ("; footer link detected" if privacy_info["footer_link_found"] else "; no footer link detected"),
+            "Confirm the page is linked from the footer and contains complete privacy information.")
+    else:
+        add("RESIL-04", "Resilience", "Privacy page",
+            "Gap", "Medium", "no privacy page detected",
+            "Create from assets/privacy_page_template.html; wire to routing; link from footer. Fill in real legal text supplied by the user.",
+            "Data controller name, contact email, DPA details, cookie policy, and user rights information.")
+
+    # Terms of Service page (RESIL-05).
+    if terms_info["pages"]:
+        add("RESIL-05", "Resilience", "Terms of Service page",
+            "Needs review", "Medium",
+            "found: " + ", ".join(terms_info["pages"]) +
+            ("; footer link detected" if terms_info["footer_link_found"] else "; no footer link detected"),
+            "Confirm the page is linked from the footer and contains complete terms including disclaimers and limitation of liability.")
+    else:
+        add("RESIL-05", "Resilience", "Terms of Service page",
+            "Gap", "Medium", "no terms of service page detected",
+            "Create from assets/terms_page_template.html; wire to routing; link from footer alongside the privacy page. Fill in real legal text supplied by the user.",
+            "Legal entity name, governing jurisdiction, contact email, liability cap, and any service-specific terms.")
 
     # On page SEO via signals.
     sig = scan["signals"]
@@ -486,17 +617,74 @@ def build_findings(scan, gi, secrets, root):
         "Needs review", "Medium", "requires content review",
         "Confirm key questions are answered concisely and facts are in text, with semantic HTML.")
 
+    # LLMO, AISEO, and E-E-A-T.
+    add("LLMO-01", "LLMO and AISEO", "LLM-optimized content structure",
+        "Needs review", "Medium", "requires content review",
+        "Confirm key pages open with a self-contained answer paragraph and use descriptive headings.")
+    add("LLMO-02", "LLMO and AISEO", "AI-readable metadata and llms.txt completeness",
+        "Needs review", "Medium", "requires llms.txt content review",
+        "Confirm llms.txt has a name line, a one-line description, and curated links to key pages.")
+    add("LLMO-03", "LLMO and AISEO", "Structured citations and sourcing",
+        "Pass" if scan["signals"].get("cite_signal", {}).get("present") else "Needs review",
+        "Low",
+        "cite or blockquote cite signals found" if scan["signals"].get("cite_signal", {}).get("present") else "no cite/blockquote cite signals found",
+        "Add <cite> or cite attributes to blockquotes on factual pages; add a references section where appropriate.")
+    add("AISEO-01", "LLMO and AISEO", "Conversational keyword and intent coverage",
+        "Needs review", "Medium", "requires content review",
+        "Check that pages cover how-to, comparison, and why-type conversational queries for their topic.")
+    add("AISEO-02", "LLMO and AISEO", "Passage-level relevance",
+        "Needs review", "Medium", "requires content review",
+        "Confirm each section is independently readable and citable without needing surrounding context.")
+
+    # E-E-A-T.
+    author_found = scan["signals"].get("author_signal", {}).get("present", False)
+    date_found   = scan["signals"].get("date_signal",  {}).get("present", False)
+    add("EEAT-01", "E-E-A-T", "Experience signals",
+        "Needs review", "High", "requires content quality review",
+        "Confirm content on experience-based pages includes specific details, original data, or first-person observations.")
+    add("EEAT-02", "E-E-A-T", "Expertise signals (author bylines, Person schema)",
+        "Needs review" if author_found else "Gap", "High",
+        "author signal found in: " + ", ".join(scan["signals"]["author_signal"]["files"][:5]) if author_found else "no author/byline signal found",
+        "Confirm each authored page has a visible byline and Person JSON-LD with sameAs." if author_found else
+        "Add author bylines and Person JSON-LD to blog posts, articles, and guides.",
+        "" if author_found else "Author name and professional profile URLs.")
+    add("EEAT-03", "E-E-A-T", "Authoritativeness signals (sameAs, entity completeness)",
+        "Needs review", "High",
+        "Organization signal found" if scan["signals"].get("schema_organization", {}).get("present") else "no Organization signal found",
+        "Complete the sameAs set on Organization; ensure organization name is consistent across all pages and schema.")
+    mixed = scan["signals"].get("mixed_content", {}).get("present", False)
+    https_base_issue = scan["signals"].get("https_base", {}).get("present", False)
+    privacy_present = bool(privacy_info["pages"])
+    trust_issues = []
+    if mixed or https_base_issue:
+        trust_issues.append("mixed content or http base href detected")
+    if not privacy_present:
+        trust_issues.append("no privacy page detected")
+    add("EEAT-04", "E-E-A-T", "Trustworthiness signals",
+        "Gap" if trust_issues else "Needs review", "High",
+        "; ".join(trust_issues) if trust_issues else "no obvious trust issues detected by static scan",
+        "Ensure HTTPS throughout, add a privacy page, and confirm contact and about pages exist.")
+
     # Performance / Lighthouse (cannot be measured statically).
     add("PERF-04", "Performance", "Lighthouse score optimization",
         "Needs review", "Medium", "not measured by static scan",
         "Run Lighthouse per references/website_criteria.md section 10; record scores and work the opportunities.")
     add("PERF-02", "Performance", "Page speed and asset optimization",
         "Needs review", "High", "requires asset and header review",
-        "Review image formats and sizes, bundle output, lazy loading, compression, and cache headers.")
+        "Review image formats (WebP), lazy loading, bundle splitting, compression, and cache headers.")
     add("PERF-03", "Performance", "Mobile optimization",
         "Needs review", "High",
         "viewport signal found" if sig["viewport"]["present"] else "no viewport signal found",
         "Confirm responsive layout, tap target sizing, and no overflow at narrow widths.")
+    if caching_info["configs"]:
+        add("PERF-05", "Performance", "Caching configuration",
+            "Needs review", "High",
+            "caching config found: " + ", ".join(caching_info["configs"][:5]),
+            "Confirm Cache-Control headers are correct: immutable for versioned assets, no-cache for HTML, no-store for private API responses.")
+    else:
+        add("PERF-05", "Performance", "Caching configuration",
+            "Gap", "High", "no caching config file found (_headers, vercel.json, netlify.toml, nginx conf, .htaccess)",
+            "Add a caching config per references/website_criteria.md PERF-05 with immutable headers for versioned assets and no-cache for HTML.")
 
     # Style rules.
     em_total = scan["em_dash"]["total"]

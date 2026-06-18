@@ -17,6 +17,7 @@ Severity scale: Blocking (ship stopper or security), High (clear standards failu
 9. Optional enhancements (OPT)
 10. Running Lighthouse
 11. How SEO, GEO, and AEO relate
+12. LLMO, AISEO, and E-E-A-T
 
 ---
 
@@ -84,7 +85,37 @@ Severity scale: Blocking (ship stopper or security), High (clear standards failu
 
 **PERF-01 Core Web Vitals.** The site meets good thresholds for Largest Contentful Paint, Interaction to Next Paint, and Cumulative Layout Shift. Detect: run Lighthouse or read field data if available (see "Running Lighthouse"). Fix: address the specific causes the report names, for example a heavy hero image for LCP, long tasks for INP, or unsized media for CLS. Severity: High. Applies: always (best measured on a live or served build).
 
-**PERF-02 Page speed.** Assets are optimized: images are compressed and right sized in modern formats, scripts and styles are minified and code split, render blocking resources are reduced, and caching and compression are configured. Detect: inspect asset sizes and formats, bundle output, and (for a live URL) response headers for compression and cache control. Fix: compress and convert images, lazy load below the fold media, split and defer scripts, enable text compression and sensible cache headers. Severity: High. Applies: always.
+**PERF-02 Page speed.** Assets are optimized: images are compressed and right-sized in modern formats, scripts and styles are minified and code split, render blocking resources are reduced, and caching and compression are configured. Detect: inspect asset sizes and formats, bundle output, and (for a live URL) response headers for compression and cache control. Fix: compress and convert images to WebP (see RESIL-03), lazy load below-the-fold media (`loading="lazy"`), split and defer non-critical scripts (`defer` or `type="module"`), preload critical assets with `<link rel="preload">`, enable Brotli or gzip compression at the server or host level. Severity: High. Applies: always.
+
+**PERF-05 Caching configuration.** Correct HTTP `Cache-Control` headers are set for all asset types. Detect: for a live URL, inspect `Cache-Control`, `ETag`, and `Vary` response headers on HTML, CSS, JS, and image responses. For source, look for host config files: `_headers` (Netlify, Cloudflare Pages), `vercel.json`, `netlify.toml`, `next.config.js` headers array, nginx config, or Apache `.htaccess`. Report as Needs review if a config is found; Gap if none is found. Fix:
+
+- **Versioned assets** (CSS/JS/images with content hashes in filenames): `Cache-Control: public, max-age=31536000, immutable`
+- **HTML pages**: `Cache-Control: no-cache` (forces revalidation but allows conditional GETs)
+- **API responses**: `Cache-Control: private, no-store` or a short `max-age` appropriate to the data freshness requirements
+- **Fonts** (self hosted): `Cache-Control: public, max-age=31536000, immutable`
+- **Service worker script** (`sw.js`): `Cache-Control: no-cache` so updates are picked up immediately
+- Add `Vary: Accept-Encoding` when compression is enabled.
+- Example `_headers` file for Netlify and Cloudflare Pages:
+  ```
+  /assets/*
+    Cache-Control: public, max-age=31536000, immutable
+  /*.html
+    Cache-Control: no-cache
+  /fonts/*
+    Cache-Control: public, max-age=31536000, immutable
+  ```
+- Example `vercel.json` headers array:
+  ```json
+  { "headers": [
+    { "source": "/assets/(.*)", "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }] },
+    { "source": "/(.*)\\.html", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] }
+  ]}
+  ```
+- **Service worker caching strategy**: cache-first for versioned static assets (CSS, JS, images, fonts); network-first with offline fallback for HTML navigation requests; stale-while-revalidate for API calls where slight staleness is acceptable.
+- Preload the primary font: `<link rel="preload" href="/fonts/primary.woff2" as="font" type="font/woff2" crossorigin>`.
+- Add `<link rel="preconnect">` for the site's own API origin if separate; add `<link rel="dns-prefetch">` for any remaining approved third-party origins.
+
+Severity: High. Applies: always.
 
 **PERF-03 Mobile optimization.** The layout is responsive, the viewport meta is correct, tap targets are large enough and spaced, text is legible without zooming, and nothing overflows on small screens. Detect: review responsive styles and the viewport tag; test narrow widths. Fix: correct responsive rules, size and space tap targets, fix overflow. Severity: High. Applies: always.
 
@@ -98,7 +129,18 @@ Severity scale: Blocking (ship stopper or security), High (clear standards failu
 
 **RESIL-02 Offline or no internet page.** A graceful page shown when the user has no connection, typically a service worker with an offline fallback. Detect: check for a service worker and an offline fallback page or route. Fix: add a service worker that serves `assets/offline_page_template.html` (or the project equivalent) when the network is unavailable; cache the shell. Severity: Low. Applies: always (especially progressive web apps).
 
-**RESIL-03 No external image, video, or media links.** Images, video, fonts, and other media are served from the site's own origin, not hot linked from third party hosts or third party CDNs, and embeds are reviewed. Detect: the scanner flags absolute http or https references to media and known media or font CDNs and third party embeds; review each. Fix: self host the media and fonts, replace third party embeds with self hosted media or a privacy reviewed alternative, update references to relative or same origin URLs. Severity: High. Applies: always.
+**RESIL-03 No external image, video, or media links.** Images, video, fonts, and other media are served from the site's own origin, not hot linked from third party hosts or third party CDNs, and embeds are reviewed. Detect: the scanner flags absolute http or https references to media and known media or font CDNs and third party embeds; review each. Fix using `scripts/download_media.py`:
+
+- **Images**: run `python3 scripts/download_media.py --findings <workdir>/audit_findings.json --root <repo-root> --out-images public/media/images --dry-run` first to preview, then without `--dry-run` to download. The script converts images to WebP using Pillow if installed; otherwise it saves the original format and notes it in `fix_summary.md`. Update all `src`, `href`, `srcset`, and `url()` references to the new local WebP path. Wrap in a `<picture>` element with a WebP `<source>` and an original-format `<img>` fallback. Add explicit `width` and `height` attributes to prevent CLS. Use `loading="lazy"` for below-the-fold images and `fetchpriority="high"` for the LCP image.
+- **Videos**: run the download script with `--out-videos public/media/videos`. Videos are downloaded in their original format; no re-encoding is performed. Replace the embed `src` with the local path. Add `preload="metadata"`, explicit `width` and `height`, and a `poster` attribute pointing to a self-hosted still frame. Add a `<track>` element for captions if a transcript is available.
+- **Fonts**: run the download script with `--out-fonts public/fonts`. Update `@font-face` `src` declarations or framework import statements to the local path. Add `font-display: swap`. Remove any remaining CDN `@import` for fonts.
+- After downloading, re-run `audit_site.py` to confirm RESIL-03 is cleared. Check the generated `media_replacements.json` for any failed downloads that need manual handling.
+
+Severity: High. Applies: always.
+
+**RESIL-04 Privacy page.** A privacy page is present and linked from the site footer (or a persistent navigation element). Detect: scan for a page or route named `privacy`, `privacy-policy`, or `datenschutz` in MARKUP_EXTS; scan footer-like markup for a link to a privacy URL. Fix: create from `assets/privacy_page_template.html`, inherit the project's existing design system (Rule 4 of `coding_rules.md`), wire to the framework's routing, and link from the footer. The page must include: what data is collected, why it is collected, how long it is retained, whether it is shared with third parties, cookie policy, user rights (access, deletion, portability), and a contact address. These values must be supplied by the user; do not invent legal text. Severity: Medium. Applies: always.
+
+**RESIL-05 Terms of Service page.** A Terms of Service (or Terms and Conditions) page is present and linked from the site footer. Detect: scan for a page or route named `terms`, `terms-of-service`, `terms-and-conditions`, `tos`, or `agb` in MARKUP_EXTS; scan footer-like markup for a link to a terms URL. Fix: create from `assets/terms_page_template.html`, inherit the project's existing design system (Rule 4 of `coding_rules.md`), wire to the framework's routing, and link from the footer alongside the privacy page. The page must include at minimum: acceptance of terms, permitted and prohibited uses, intellectual property statement, disclaimers, limitation of liability, governing law, and a contact address. These values must be supplied by the user; do not invent or fabricate legal text. Severity: Medium. Applies: always.
 
 ---
 
@@ -167,5 +209,32 @@ These three overlap and share most of the work, which is why the checklist treat
 - SEO (search engine optimization) targets ranking in traditional search results: crawlability, metadata, structured data, internal links, and performance.
 - AEO (answer engine optimization) targets direct answers and featured snippets: concise question and answer content, FAQ schema, and clean semantic structure.
 - GEO (generative engine optimization) targets being surfaced and cited by AI systems: `llms.txt`, citable text based facts, consistent entity definition, and the same structured data and semantics.
+- LLMO (large language model optimization) targets how LLMs retrieve, rank, and quote site content when generating answers: clear structure, self-contained passages, explicit citations, and machine-readable metadata that lets a model attribute content correctly.
+- AISEO targets discovery through AI-powered search interfaces (Perplexity, ChatGPT search, Gemini, Bing Copilot): conversational intent coverage, passage-level relevance, and structured data that AI rankers weight.
+- E-E-A-T (Experience, Expertise, Authoritativeness, Trustworthiness) is Google's quality framework for evaluating content and sites. Strong E-E-A-T signals directly improve rankings and are increasingly used by AI systems to decide what to cite.
 
-A site that satisfies the SEO items here is most of the way to AEO and GEO; the GEO and AEO specific additions are `llms.txt`, answer ready content, and entity consistency.
+A site that satisfies the SEO, GEO, and AEO items here is most of the way to LLMO and AISEO; the additional work is author signals, citation structure, passage clarity, and trust signals (privacy page, contact page, HTTPS, consistent entity data).
+
+---
+
+## 12. LLMO, AISEO, and E-E-A-T
+
+These criteria extend the GEO and AEO section with more specific checks for AI-driven discovery and Google's quality evaluation framework.
+
+**LLMO-01 LLM-optimized content structure.** Key pages are written so an LLM can extract a complete, accurate answer from a single passage without needing surrounding context. Detect: review whether each important page has a clear, self-contained opening paragraph that states the topic and the main answer. Check that headings are descriptive questions or statements (not clever or vague), and that lists and tables are used for enumerable facts. Fix: rewrite vague headings as explicit questions or statements; move the main answer to the opening paragraph; convert prose lists of facts into HTML lists or tables. Severity: Medium. Applies: content and marketing sites.
+
+**LLMO-02 AI-readable metadata and llms.txt completeness.** The `llms.txt` (CRAWL-03) is complete and useful to a language model: it names the site, states its purpose in one sentence, links to primary pages and key documentation, and avoids filler text. Detect: read `llms.txt` and check for a name line, a description line, and at least one curated link section. Fix: update from `assets/llms_txt_template.md` with real values; add a concise site description; list the five to ten most important pages with their URLs and a one-line description of each. Severity: Medium. Applies: always.
+
+**LLMO-03 Structured citations and sourcing.** Pages that make factual claims cite their sources using `<cite>`, `<blockquote cite="...">`, or a visible references section, so LLMs can attribute claims correctly and users can verify them. Detect: scan for `<cite>` elements and `cite` attributes on `<blockquote>`; check whether factual pages include a references or sources section. Fix: add `<cite>` wrappers around source names; add `cite` attributes to blockquotes; add a references section to factual or research-oriented pages. Severity: Low. Applies: content sites with factual claims.
+
+**AISEO-01 Conversational keyword and intent coverage.** Pages cover the natural language phrasings and follow-up questions users ask AI assistants, not only short-tail keyword variants. Detect: review page content against likely conversational queries for that topic (for example "how do I...", "what is the difference between...", "why does..."). Fix: add an FAQ section or inline answers for the top conversational queries; use question-style headings where natural; cover comparison and how-to intents on the relevant pages. Severity: Medium. Applies: content and marketing sites.
+
+**AISEO-02 Passage-level relevance.** Each section of a page is independently useful: the heading, the first sentence of the section, and the body together answer the implied question without requiring the reader to have read earlier sections. Detect: test each `<section>` or heading-delimited block in isolation; check whether it makes sense on its own. Fix: add brief context to section openings; avoid pronouns that reference earlier sections without restating the noun; make each section independently citable. Severity: Medium. Applies: long-form content pages.
+
+**EEAT-01 Experience signals.** Content that benefits from first-hand experience (reviews, how-to guides, case studies) includes signals that the author has direct experience: specific details, personal observations, or original data. Detect: review whether the content reads as first-hand (specific examples, concrete numbers, personal results) rather than generic (vague claims, no specifics). Fix: add specific details, original data, or first-person experience where the topic calls for it. Note: this is a content quality judgment; record as Needs review. Severity: High. Applies: pages where first-hand experience is expected by users.
+
+**EEAT-02 Expertise signals.** Authors and contributors are identified with bylines, credentials, or schema markup. Detect: scan for `rel="author"`, `itemprop="author"`, `"@type": "Person"` in JSON-LD, `article:author` Open Graph tag, or visible author name and bio sections. Fix: add a visible author byline; add `Person` JSON-LD with `name`, `url`, and where appropriate `jobTitle` and `sameAs` links to professional profiles; link the author name to an author bio page. Requires: author name and profile URLs (ask if unknown). Severity: High. Applies: blog posts, articles, guides, and any content where authorship affects credibility.
+
+**EEAT-03 Authoritativeness signals.** The site and its authors are linked to and cited by other authoritative sources, and the on-site entity markup (STRUCT-03, STRUCT-04) is complete enough to support a knowledge panel. Detect: check whether `sameAs` links point to recognized profiles (LinkedIn, Wikipedia, Crunchbase, industry directories); check whether author pages link to external profiles; check whether the organization is mentioned consistently in the page copy and schema. Fix: complete the `sameAs` set on the Organization node; add author `sameAs` links; ensure the organization name is used consistently across every page and matches the schema. Severity: High. Applies: always.
+
+**EEAT-04 Trustworthiness signals.** The site demonstrates it is a legitimate, trustworthy operation. Detect: check for HTTPS (canonical and all internal links use `https://`); check for a privacy page (RESIL-04); check for a contact page with real contact details; check for an about page; check for consistent NAP if a local business (STRUCT-06); check that no page shows a browser security warning (mixed content). Fix: force HTTPS at the host level and in canonical URLs; add a privacy page (RESIL-04); add or complete the contact and about pages; fix any mixed content by self-hosting the HTTP resource. Severity: High. Applies: always.

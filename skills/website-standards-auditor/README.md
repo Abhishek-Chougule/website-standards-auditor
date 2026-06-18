@@ -4,9 +4,15 @@ An Agent Skill that audits any website (new, in development, or already live) ag
 
 ## What it covers
 
-- Engineering and content rules: never assume, never use the em dash, always keep `.gitignore` and `README.md` current.
+- Engineering and content rules: never assume, never use the em dash, always keep `.gitignore` and `README.md` current, and never change existing UI/UX when fixing.
 - Git policy: a project `.gitignore` based on the organization standard, with no tracked secrets.
 - Website quality: SEO, GEO, AEO, `llms.txt`, sitemap, robots, metadata, canonical and hreflang, schema and FAQ markup, entity and knowledge graph readiness, internal links and topic clusters, Core Web Vitals, page speed, mobile, Lighthouse, custom 404, offline page, no external media, no emojis, and optional items such as Open Graph, Twitter cards, and analytics.
+- **LLMO and AISEO**: LLM-optimized content structure, AI-readable `llms.txt`, structured citations, conversational intent coverage, and passage-level relevance.
+- **E-E-A-T**: Experience, Expertise, Authoritativeness, and Trustworthiness signals including author bylines, Person schema, `sameAs` entity completeness, HTTPS, and a privacy page.
+- **External media self-hosting**: downloads external images (converts to WebP), videos (as-is), and fonts; generates a replacement map so all `src`/`href`/`srcset`/`url()` references can be updated to local paths.
+- **Caching and performance**: `Cache-Control` headers for versioned assets, HTML, fonts, and the service worker; Brotli/gzip compression; resource hints; service worker caching strategy.
+- **Privacy page**: detects a missing or unlinked privacy page (RESIL-04, EEAT-04) and scaffolds one from the bundled template.
+- **Terms of Service page**: detects a missing or unlinked Terms of Service page (RESIL-05) and scaffolds one from the bundled template.
 
 ## How it works
 
@@ -30,6 +36,7 @@ website-standards-auditor/
     website_criteria.md
   scripts/
     audit_site.py
+    download_media.py
   assets/
     gap_identification_template.md
     schema_templates.md
@@ -37,6 +44,8 @@ website-standards-auditor/
     llms_txt_template.md
     offline_page_template.html
     not_found_template.html
+    privacy_page_template.html
+    terms_page_template.html
 ```
 
 ## Running the scanner directly
@@ -46,3 +55,28 @@ python3 scripts/audit_site.py --path <repo-root> --out audit_findings.json
 ```
 
 It writes structured findings as JSON and prints a readable summary. It never modifies the project. Use it as input to the gap report, not as the final verdict, since some items need human judgment.
+
+## Running the media download script
+
+Run after the gap report is approved and RESIL-03 gaps are confirmed. Always use `--dry-run` first:
+
+```bash
+# Preview what would be downloaded (no files written).
+python3 scripts/download_media.py \
+  --findings audit_findings.json \
+  --root . \
+  --out-images public/media/images \
+  --out-videos public/media/videos \
+  --out-fonts  public/fonts \
+  --dry-run
+
+# Download for real after reviewing the dry-run output.
+python3 scripts/download_media.py \
+  --findings audit_findings.json \
+  --root . \
+  --out-images public/media/images \
+  --out-videos public/media/videos \
+  --out-fonts  public/fonts
+```
+
+Images are converted to WebP (requires `pip install Pillow`). Videos are downloaded as-is. A `media_replacements.json` file is written mapping each original URL to its new local path. Use that map to update all `src`, `href`, `srcset`, and `url()` references in the project.

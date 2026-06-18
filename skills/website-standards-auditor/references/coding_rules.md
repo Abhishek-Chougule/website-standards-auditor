@@ -36,6 +36,22 @@ Every project must carry a current `.gitignore` and a current `README.md`, and e
 
 This skill enforces Rule 3 as a mandatory final step on every fix run, even when the user only asked for something else.
 
+## Rule 4: Never change existing UI/UX
+
+When fixing gaps or scaffolding new pages and files, preserve every existing visual and interaction decision in the project. This rule is binding on every fix run, even when the user does not mention it.
+
+Operationally, this means:
+
+- Do not alter font families, font sizes, font weights, or line heights already in the project's stylesheet.
+- Do not alter color values, color tokens, or CSS custom properties already defined.
+- Do not alter spacing, padding, margin, border radius, shadow, or layout rules already in the project.
+- Do not alter the visual hierarchy, section order, or navigation structure already present.
+- New pages (privacy policy, custom 404, offline fallback, or any other page created during a fix run) must inherit the project's existing design system. Read the project's CSS, design tokens, or component library first, then apply those same tokens to the new page.
+- If no design system is detectable (for example a brand new project with no stylesheet yet), use the bundled template defaults from `assets/` without inventing a new visual style. Note in `fix_summary.md` that the template defaults were used and that the user should update the tokens to match their final design.
+- Never swap the project's chosen framework component or icon system for a different one, even if the alternative seems more convenient.
+
+This rule also applies to the files this skill itself produces (`gap_identification.md`, `fix_summary.md`): do not change the structure or layout of a report that was already presented to the user unless the user asks for edits.
+
 ## A note on emojis
 
 Per the website criteria, shipped site content uses icons rather than emojis. When replacing an emoji, map it to an equivalent icon in the project's existing icon system rather than deleting meaning or adding a new dependency for a single glyph.

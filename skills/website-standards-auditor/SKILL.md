@@ -15,11 +15,12 @@ The standards are fixed and bundled with this skill. Do not invent new rules and
 
 ## Operating principles (these are binding for every run)
 
-These three principles come from the organization rules and override convenience at every step.
+These principles come from the organization rules and override convenience at every step.
 
 - **Never make assumptions.** Detect facts from the repository, the served site, and the user's words. When a fix needs a value that cannot be derived from those sources (for example the canonical domain, the default language and locale, the legal or brand name, social profile URLs, or contact name, address, and phone), do not guess and do not insert a plausible placeholder as if it were real. List the item under "Information required from user" in the gap report and ask for it before writing anything that depends on it.
 - **Never use the em dash.** Do not use the em dash character in anything you write or edit, including this skill's own output files (`gap_identification.md`, `fix_summary.md`) and any site content you touch. Use a comma, colon, parentheses, or a reworded sentence instead. The audit also treats every em dash already present in the target site as a defect to be fixed.
 - **Always keep `.gitignore` and `README.md` up to date.** Every run ends by reconciling these two files against the current state of the project, even if the user only asked for an SEO check.
+- **Never change existing UI/UX.** When fixing gaps or scaffolding new pages, preserve all existing font stacks, color tokens, spacing, border radii, shadow, and layout. New pages (privacy, 404, offline, or any other page created during a fix run) must inherit the project's existing design system. Read the project's CSS, design tokens, or component library before writing a new page. If no design system is detectable, use the bundled template defaults from `assets/` and note in `fix_summary.md` that the user should update the tokens. This rule applies to every file the skill touches, not only to HTML pages.
 
 ## The two phases and the hard gate
 
@@ -78,9 +79,40 @@ Work in this order so the riskiest and most foundational items land first:
 1. **Blocking and security.** Remove tracked secrets from version control and fix `.gitignore` so they stop being tracked. Advise on rotating any secret that was committed.
 2. **Crawl and discovery files.** `robots.txt`, `sitemap.xml`, `llms.txt`, the custom 404 page, the offline page, and redirect or trailing slash rules.
 3. **On page SEO and structured data.** Title tags, meta descriptions, viewport and charset, canonical tags, hreflang where relevant, heading structure, internal links, keyword to page mapping, JSON-LD schema, FAQ schema, and entity and knowledge graph markup.
-4. **Performance and mobile.** Core Web Vitals fixes, image and asset optimization, lazy loading, caching and compression guidance, and responsive and tap target fixes.
-5. **Content and style rules.** Replace every em dash following the rule in the "Em dash and emoji handling" section below. Replace emojis with icons.
-6. **Optional items, only if approved.** Open Graph, Twitter cards, brand mentions, Google Search Console, Google Analytics, and conversion tracking.
+4. **External media self-hosting (RESIL-03).** Self-host all external images, videos, and fonts using `scripts/download_media.py`:
+   - Run with `--dry-run` first to preview what will be downloaded and where:
+     ```bash
+     python3 scripts/download_media.py --findings <workdir>/audit_findings.json \
+       --root <repo-root> \
+       --out-images public/media/images \
+       --out-videos public/media/videos \
+       --out-fonts  public/fonts \
+       --dry-run
+     ```
+   - Review the dry-run output with the user, then re-run without `--dry-run` to download.
+   - Images are converted to WebP if Pillow is installed (`pip install Pillow`); otherwise the original format is kept and a note is added to `fix_summary.md`.
+   - Videos are downloaded in their original format. No re-encoding. After downloading, add `preload="metadata"`, explicit `width` and `height`, and a `poster` attribute pointing to a self-hosted still frame.
+   - Fonts are downloaded as-is. Update `@font-face` `src` declarations and add `font-display: swap`.
+   - Use the generated `media_replacements.json` to update every `src`, `href`, `srcset`, and `url()` reference in the project. Search and replace the original external URLs with the local paths.
+   - For images, wrap in a `<picture>` element: `<source type="image/webp">` pointing to the WebP file, and an `<img>` fallback pointing to the original format file (kept alongside the WebP). Add explicit `width` and `height` to prevent CLS. Use `loading="lazy"` for below-the-fold images and `fetchpriority="high"` for the LCP image.
+   - After all references are updated, re-run `audit_site.py` to confirm RESIL-03 is cleared.
+5. **Privacy page and Terms of Service page (RESIL-04, RESIL-05).** If either page is missing or incomplete:
+   - Create the privacy page from `assets/privacy_page_template.html`.
+   - Create the terms page from `assets/terms_page_template.html`.
+   - Before writing either file, read the project's existing CSS and design tokens. Apply those tokens to the `:root` block in each template so both pages match the project's visual style (Rule 4 of `coding_rules.md`).
+   - Fill only the placeholders the user supplies. Do not invent or fabricate legal text. List all missing values (data controller name, contact email, DPA details, cookie policy, retention periods for privacy; legal entity name, governing jurisdiction, liability cap for terms) under "Information required from user".
+   - Wire both pages to the framework's routing and link them from the site footer, side by side.
+6. **Performance, caching, and mobile.** Core Web Vitals fixes, image and asset optimization, lazy loading, caching and compression per PERF-02 and PERF-05, and responsive and tap target fixes.
+7. **LLMO, AISEO, and E-E-A-T fixes (approved items only).**
+   - LLMO-01/LLMO-02: restructure content headings and opening paragraphs; update `llms.txt` to include a name line, one-line description, and curated page links.
+   - LLMO-03: add `<cite>` elements and `cite` attributes to blockquotes on factual pages.
+   - AISEO-01/AISEO-02: add FAQ sections or inline answers for conversational queries; rewrite sections to be independently readable.
+   - EEAT-01: add specific details, original data, or first-person experience signals to experience-based pages.
+   - EEAT-02: add author bylines and `Person` JSON-LD with `name`, `url`, and `sameAs` links; link author names to bio pages.
+   - EEAT-03: complete `sameAs` on the Organization node; ensure consistent naming across pages and schema.
+   - EEAT-04: force HTTPS in canonical URLs; add or complete the privacy page (RESIL-04), contact page, and about page; fix any mixed content by self-hosting the offending resource.
+8. **Content and style rules.** Replace every em dash following the rule in the "Em dash and emoji handling" section below. Replace emojis with icons.
+9. **Optional items, only if approved.** Open Graph, Twitter cards, brand mentions, Google Search Console, Google Analytics, and conversion tracking.
 
 Use the templates in `assets/` (`schema_templates.md`, `robots_txt_template.txt`, `llms_txt_template.md`, `offline_page_template.html`, `not_found_template.html`). Fill them with real values supplied by the user. Never leave a placeholder like `YOUR_DOMAIN` in a shipped file. Match the project's framework: put head tags where that framework expects them rather than dropping raw HTML into a component tree. After each group, re-run the relevant part of `scripts/audit_site.py` to confirm the gap is closed.
 
@@ -103,11 +135,14 @@ After fixing, write `fix_summary.md` covering: what changed (grouped by category
 
 ## Reference map
 
-- `references/coding_rules.md`: the engineering and content rules (pillar 1).
+- `references/coding_rules.md`: the engineering and content rules including Rule 4 (never change existing UI/UX) (pillar 1).
 - `references/git_policy.md`: the mandatory git policy text (pillar 2).
 - `references/gitignore_standard.txt`: the verbatim organization standard `.gitignore` to merge into every repository (pillar 2).
-- `references/website_criteria.md`: the full website checklist with detect, fix, and severity for every criterion, plus the "Running Lighthouse" section (pillar 3).
+- `references/website_criteria.md`: the full website checklist with detect, fix, and severity for every criterion, plus the "Running Lighthouse" section and the LLMO, AISEO, and E-E-A-T section (pillar 3).
 - `scripts/audit_site.py`: the deterministic static scanner.
+- `scripts/download_media.py`: the external media download and WebP conversion helper for RESIL-03.
 - `assets/gap_identification_template.md`: the report template for Phase 1.
 - `assets/schema_templates.md`: JSON-LD templates (Organization, WebSite with SearchAction, BreadcrumbList, FAQPage, LocalBusiness) using placeholders.
 - `assets/robots_txt_template.txt`, `assets/llms_txt_template.md`, `assets/offline_page_template.html`, `assets/not_found_template.html`: scaffolds for the crawl and resilience files.
+- `assets/privacy_page_template.html`: privacy page scaffold for RESIL-04 and EEAT-04.
+- `assets/terms_page_template.html`: Terms of Service page scaffold for RESIL-05.

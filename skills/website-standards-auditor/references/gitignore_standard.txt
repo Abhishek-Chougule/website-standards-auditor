@@ -101,17 +101,103 @@ temp/
 # -------------------------
 # AI tools / Agent generated
 # -------------------------
+
+# Anthropic / Claude
 .claude/
-.cursor/
-.windsurf/
+claude-settings.json
+claude_settings.json
+.claude_files/
+
+# Google Gemini / Antigravity / IDX
+.gemini/
+.idx/
+
+# OpenAI / Codex / ChatGPT
 .codex/
+.openai/
+.chatgpt/
+
+# Cursor editor
+.cursor/
+.cursorignore
+.cursorindexingignore
+
+# Windsurf (Codeium)
+.windsurf/
+.codeium/
+
+# Kilo Code
+.kilocode/
+
+# Cline / Roo Cline
+.cline/
+.roo/
+
+# Continue.dev
+.continue/
+
+# Aider
+.aider*
+aider.conf.yml
+
+# GitHub Copilot
+.copilot/
+
+# Tabnine
+.tabnine/
+
+# Supermaven
+.supermaven/
+
+# Amp
+.amp/
+
+# Devin
+.devin/
+
+# Pythagora / GPT Pilot
+.pythagora/
+gpt-pilot-debug.log
+gpt-pilot-debug-ste*.log
+
+# Qodo (formerly CodiumAI)
+.qodo/
+.codiumai/
+
+# Replit AI
+.replit
+.upm/
+
+# Zed AI
+.zed/
+
+# OMC
+.omc/
+
+# Pear AI
+.pear/
+
+# Bolt.new
+.bolt/
+
+# Lovable
+.lovable/
+
+# Generic agent / skill / memory directories
 .ai/
 .agents/
+.agent/
 .skills/
 .memory/
 .prompt-cache/
-claude-settings.json
+.llm-cache/
+.context/
+
+# Generic agent config files
 agent-config.json
+agent-config.yaml
+agent-config.yml
+.agentrc
 
 # -------------------------
 # Testing output
@@ -132,3 +218,13 @@ test-results/
 *.bak
 *.old
 *.backup
+
+# -------------------------
+# Website standards auditor output
+# -------------------------
+audit_findings.json
+gap_identification.md
+fix_summary.md
+media_replacements.json
+lighthouse-report.json
+lighthouse-report.html

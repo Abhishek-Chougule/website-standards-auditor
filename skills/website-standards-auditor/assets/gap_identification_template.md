@@ -22,6 +22,8 @@
 | On page SEO | | | | | |
 | Structured data | | | | | |
 | GEO and AEO | | | | | |
+| LLMO and AISEO | | | | | |
+| E-E-A-T | | | | | |
 | Performance | | | | | |
 | Resilience | | | | | |
 | Content and style | | | | | |
@@ -78,6 +80,25 @@ List every criterion. Order each category by severity, highest first. Keep one r
 | GEO-03 | Semantic, citable structure | | | | | |
 | GEO-04 | Brand and entity consistency for AI | | | | | |
 
+### LLMO and AISEO
+
+| ID | Criterion | Status | Severity | Evidence | Recommended fix | Information required |
+| --- | --- | --- | --- | --- | --- | --- |
+| LLMO-01 | LLM-optimized content structure | | | | | |
+| LLMO-02 | AI-readable metadata and llms.txt completeness | | | | | |
+| LLMO-03 | Structured citations and sourcing | | | | | |
+| AISEO-01 | Conversational keyword and intent coverage | | | | | |
+| AISEO-02 | Passage-level relevance | | | | | |
+
+### E-E-A-T
+
+| ID | Criterion | Status | Severity | Evidence | Recommended fix | Information required |
+| --- | --- | --- | --- | --- | --- | --- |
+| EEAT-01 | Experience signals | | | | | |
+| EEAT-02 | Expertise signals (author bylines, Person schema) | | | | | |
+| EEAT-03 | Authoritativeness signals (sameAs, entity completeness) | | | | | |
+| EEAT-04 | Trustworthiness signals (HTTPS, privacy page, contact) | | | | | |
+
 ### Performance, Core Web Vitals, and mobile
 
 | ID | Criterion | Status | Severity | Evidence | Recommended fix | Information required |
@@ -86,6 +107,7 @@ List every criterion. Order each category by severity, highest first. Keep one r
 | PERF-02 | Page speed | | | | | |
 | PERF-03 | Mobile optimization | | | | | |
 | PERF-04 | Lighthouse score optimization | | | | | |
+| PERF-05 | Caching configuration | | | | | |
 
 ### Resilience
 
@@ -94,6 +116,8 @@ List every criterion. Order each category by severity, highest first. Keep one r
 | RESIL-01 | Custom 404 page | | | | | |
 | RESIL-02 | Offline / no internet page | | | | | |
 | RESIL-03 | No external media links | | | | | |
+| RESIL-04 | Privacy page | | | | | |
+| RESIL-05 | Terms of Service page | | | | | |
 
 ### Content and style
 

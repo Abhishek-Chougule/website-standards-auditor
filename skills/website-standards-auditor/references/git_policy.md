@@ -20,6 +20,7 @@ Every repository must include a project specific `.gitignore` based on the organ
    - Testing output
    - Local development files
    - Miscellaneous backup files
+   - Website standards auditor output (`audit_findings.json`, `gap_identification.md`, `fix_summary.md`, `media_replacements.json`, `lighthouse-report.*`): these are local working files produced by the skill during an audit or fix run. They contain project analysis and are never meant to be committed.
 3. No secret bearing file is tracked by git. When git is available, the scanner runs the equivalent of `git ls-files` and flags any tracked file matching secret patterns such as `.env`, `*.pem`, `*.key`, `*.crt`, `*.p12`, `*.pfx`, `secrets.json`, `credentials.json`, or `service-account.json`. A tracked `.env.example` is allowed.
 
 ## How this skill fixes gaps
