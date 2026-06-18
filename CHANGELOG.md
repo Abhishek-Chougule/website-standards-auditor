@@ -23,8 +23,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Skill output files added to `.gitignore` and `references/gitignore_standard.txt`: `audit_findings.json`, `gap_identification.md`, `fix_summary.md`, `media_replacements.json`, `lighthouse-report.*`.
 - **AI tools section in `.gitignore` expanded** to cover 20+ tools: Claude, Gemini, Codex, Cursor, Windsurf/Codeium, Kilo Code, Cline/Roo, Continue.dev, Aider, GitHub Copilot, Tabnine, Supermaven, Amp, Devin, Pythagora, Qodo, Replit, Zed, OMC, Pear AI, Bolt.new, Lovable, and generic agent directories.
 - `CHANGELOG.md`, `CONTRIBUTING.md`, and `LICENSE` (MIT, Abhishek Chougule) added to the repo root.
-- Gap report template updated with new category rows: LLMO and AISEO, E-E-A-T, RESIL-04, RESIL-05, PERF-05.
-
+- Gap report template updated with new category rows: LLMO and AISEO, E-E-A-T, RESIL-04, RESIL-05, PERF-05, Form validation, and Interaction and CTA.
+- **Form validation scanning** added to `audit_site.py`: statically analyzes `<input>`, `<textarea>`, and `<select>` for required attributes, length limits, appropriate input types (phone, email, date, number, password, url), label associations, and missing validation elements. Maps to `FORM-01` through `FORM-11`.
+- **Interaction and CTA validation** added to `audit_site.py`: statically checks all `<a href>` and framework `<Link to>` elements to ensure destinations exist and aren't placeholder `#` or `javascript:void(0)` routes; ensures all `<button>` tags specify an explicit `type` to prevent unintentional form submissions. Maps to `CTA-01` and `CTA-02`.
 ## [1.0.0] - 2026-06-17
 
 ### Added

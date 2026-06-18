@@ -238,3 +238,17 @@ These criteria extend the GEO and AEO section with more specific checks for AI-d
 **EEAT-03 Authoritativeness signals.** The site and its authors are linked to and cited by other authoritative sources, and the on-site entity markup (STRUCT-03, STRUCT-04) is complete enough to support a knowledge panel. Detect: check whether `sameAs` links point to recognized profiles (LinkedIn, Wikipedia, Crunchbase, industry directories); check whether author pages link to external profiles; check whether the organization is mentioned consistently in the page copy and schema. Fix: complete the `sameAs` set on the Organization node; add author `sameAs` links; ensure the organization name is used consistently across every page and matches the schema. Severity: High. Applies: always.
 
 **EEAT-04 Trustworthiness signals.** The site demonstrates it is a legitimate, trustworthy operation. Detect: check for HTTPS (canonical and all internal links use `https://`); check for a privacy page (RESIL-04); check for a contact page with real contact details; check for an about page; check for consistent NAP if a local business (STRUCT-06); check that no page shows a browser security warning (mixed content). Fix: force HTTPS at the host level and in canonical URLs; add a privacy page (RESIL-04); add or complete the contact and about pages; fix any mixed content by self-hosting the HTTP resource. Severity: High. Applies: always.
+
+---
+
+## 13. Form validation (FORM)
+
+**FORM-01 to FORM-11 Form field validation.** Form inputs use the correct semantic types and have appropriate validation constraints (min, max, maxlength, pattern, etc.). Detect: static analysis of `type` and attributes on `<input>`, `<textarea>`, and `<select>` tags in source files. Fix: apply the recommended attributes (e.g. `type="email"`, `maxlength` on text, `minlength` on passwords). Severity: Medium to High depending on the field. Applies: any site with forms.
+
+---
+
+## 14. Interaction and CTA (CTA)
+
+**CTA-01 Working link destinations.** Anchor tags and Link components point to real destinations, not placeholders. Detect: static analysis of `<a>` and framework `<Link>` tags for missing `href` (or `to`) attributes, or values like `#`, empty string, or `javascript:...`. Fix: assign a valid URL or internal route to the `href` attribute. Severity: High. Applies: always.
+
+**CTA-02 Explicit button types.** Button tags declare their type explicitly to prevent unintended form submissions. Detect: static analysis of `<button>` tags for a missing `type` attribute. Fix: add `type="button"` to buttons that are used for UI interactions and are not intended to submit a form. Severity: High. Applies: always.

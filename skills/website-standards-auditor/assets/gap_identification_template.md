@@ -26,6 +26,8 @@
 | E-E-A-T | | | | | |
 | Performance | | | | | |
 | Resilience | | | | | |
+| Form validation | | | | | |
+| Interaction and CTA | | | | | |
 | Content and style | | | | | |
 | Git hygiene | | | | | |
 | Optional | | | | | |
@@ -118,6 +120,29 @@ List every criterion. Order each category by severity, highest first. Keep one r
 | RESIL-03 | No external media links | | | | | |
 | RESIL-04 | Privacy page | | | | | |
 | RESIL-05 | Terms of Service page | | | | | |
+
+### Form validation
+
+| ID | Criterion | Status | Severity | Evidence | Recommended fix | Information required |
+| --- | --- | --- | --- | --- | --- | --- |
+| FORM-01 | Phone/mobile field validation | | | | | |
+| FORM-02 | Email field type | | | | | |
+| FORM-03 | Date/time field type | | | | | |
+| FORM-04 | Number field bounds (min, max) | | | | | |
+| FORM-05 | Password field security | | | | | |
+| FORM-06 | URL field type | | | | | |
+| FORM-07 | File input accept attribute | | | | | |
+| FORM-08 | Text field maxlength | | | | | |
+| FORM-09 | Textarea length limits | | | | | |
+| FORM-10 | Form field label association | | | | | |
+| FORM-11 | Required field attributes | | | | | |
+
+### Interaction and CTA
+
+| ID | Criterion | Status | Severity | Evidence | Recommended fix | Information required |
+| --- | --- | --- | --- | --- | --- | --- |
+| CTA-01 | Working link destinations | | | | | |
+| CTA-02 | Explicit button types | | | | | |
 
 ### Content and style
 

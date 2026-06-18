@@ -11,6 +11,8 @@ An Agent Skill that audits any website (new, in development, or already live) ag
 - **E-E-A-T**: Experience, Expertise, Authoritativeness, and Trustworthiness signals including author bylines, Person schema, `sameAs` entity completeness, HTTPS, and a privacy page.
 - **External media self-hosting**: downloads external images (converts to WebP), videos (as-is), and fonts; generates a replacement map so all `src`/`href`/`srcset`/`url()` references can be updated to local paths.
 - **Caching and performance**: `Cache-Control` headers for versioned assets, HTML, fonts, and the service worker; Brotli/gzip compression; resource hints; service worker caching strategy.
+- **Form validation**: statically analyzes form elements for required attributes, length limits, appropriate input types (phone, email, date, number, password, url), and label associations.
+- **Interaction and CTA**: ensures anchor tags have valid destinations (not `#` or `javascript:void(0)`) and buttons declare their `type` explicitly.
 - **Privacy page**: detects a missing or unlinked privacy page (RESIL-04, EEAT-04) and scaffolds one from the bundled template.
 - **Terms of Service page**: detects a missing or unlinked Terms of Service page (RESIL-05) and scaffolds one from the bundled template.
 

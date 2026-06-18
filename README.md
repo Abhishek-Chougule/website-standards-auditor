@@ -56,6 +56,8 @@ The skill will:
 | Performance | Core Web Vitals, Lighthouse, WebP images, lazy loading, `Cache-Control` headers, Brotli/gzip |
 | External media | Download images (convert to WebP), download videos (as-is), download fonts, update all references |
 | Resilience | Custom 404, offline page, privacy page, Terms of Service page, no external media hot-links |
+| Form validation | Static analysis of `<input>`, `<textarea>`, `<select>` for types (phone, email, date, number, password, url), label associations, length limits, and missing required attributes |
+| Interaction and CTA | Link destination checks (`href="#"` or `javascript:`), explicit button types (`type="button"`) |
 | Content and style | No em dash, no emojis (use icons instead) |
 | Optional | Open Graph, Twitter cards, Google Analytics, Google Search Console, conversion tracking |
 

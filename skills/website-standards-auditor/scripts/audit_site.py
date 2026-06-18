@@ -19,6 +19,8 @@ What it checks:
 - Tracked secret files, when the tree is a git repository.
 - Form field validation: phone, email, date, number/range, password, file, URL,
   label association, required attributes, and maxlength on text inputs.
+- Call-to-action (CTA) validation: working link destinations (no empty or placeholder
+  hrefs like '#' or 'javascript:') and explicit button types.
 
 Usage:
     python3 audit_site.py --path <repo-root> --out <findings.json>
@@ -369,6 +371,72 @@ _NUMBER_KEYWORDS   = re.compile(
 _TEXT_KEYWORDS     = re.compile(r"name|title|city|street|address|company|firm|org", re.I)
 _MANDATORY_KEYWORDS= re.compile(r"required|mandatory", re.I)
 
+# ---------------------------------------------------------------------------
+# Interaction and CTA detection helpers
+# ---------------------------------------------------------------------------
+# Matches any <a ...> or <Link ...> or <NavLink ...> tag.
+_A_OPEN_TAG      = re.compile(r"<(?:a|Link|NavLink)\b([^>]*?)(?:/?>|>)", re.I | re.S)
+# Matches any <button ...> or <Button ...> tag.
+_BUTTON_OPEN_TAG = re.compile(r"<(?:button|Button)\b([^>]*?)(?:/?>|>)", re.I | re.S)
+
+def detect_cta_issues(root, all_files):
+    """
+    Scan markup files for common Call-To-Action (CTA) gaps.
+    
+    Checks performed:
+      - Anchor tags (<a>, <Link>): missing href, or placeholder href (#, empty, javascript:void).
+      - Button tags (<button>): missing type attribute (which defaults to 'submit').
+      
+    Returns a dict with issues and counts.
+    """
+    issues = []
+    a_count = 0
+    button_count = 0
+    
+    def _add(file_rel, lineno, tag_type, issue, snippet):
+        if len(issues) < OCCURRENCE_CAP:
+            issues.append({
+                "file": file_rel, "line": lineno,
+                "tag_type": tag_type, "issue": issue,
+                "snippet": snippet[:160],
+            })
+            
+    for path in all_files:
+        if path.suffix.lower() not in FORM_EXTS:
+            continue
+        content = read_text(path)
+        if not content:
+            continue
+            
+        relpath = rel(path, root)
+        
+        for m in _A_OPEN_TAG.finditer(content):
+            a_count += 1
+            attrs = m.group(1)
+            lineno = content[:m.start()].count("\n") + 1
+            snippet = m.group(0)[:160]
+            
+            href = _attr(attrs, "href", "to")
+            if not _has_attr(attrs, "href", "to"):
+                _add(relpath, lineno, "anchor", "Link is missing href (or to) attribute", snippet)
+            elif href in ("", "#") or href.startswith("javascript:"):
+                _add(relpath, lineno, "anchor", f"Link has placeholder destination ('{href}')", snippet)
+                
+        for m in _BUTTON_OPEN_TAG.finditer(content):
+            button_count += 1
+            attrs = m.group(1)
+            lineno = content[:m.start()].count("\n") + 1
+            snippet = m.group(0)[:160]
+            
+            if not _has_attr(attrs, "type"):
+                _add(relpath, lineno, "button", "Button is missing type attribute (defaults to submit, which can cause unwanted form submissions)", snippet)
+                
+    return {
+        "issues": issues,
+        "a_count": a_count,
+        "button_count": button_count,
+        "truncated": len(issues) >= OCCURRENCE_CAP,
+    }
 
 def detect_form_validation(root, all_files):
     """
@@ -687,6 +755,7 @@ def build_findings(scan, gi, secrets, root):
     terms_info         = detect_terms_page(root, scan["all_files"])
     caching_info       = detect_caching_config(root, scan["all_files"])
     form_validation    = detect_form_validation(root, scan["all_files"])
+    cta_validation     = detect_cta_issues(root, scan["all_files"])
 
     def add(fid, category, criterion, status, severity, evidence, recommendation, info_required=""):
         findings.append({
@@ -1005,6 +1074,29 @@ def build_findings(scan, gi, secrets, root):
             add("FORM-11", "Form validation", "Required field attributes",
                 "Pass", "Medium", "no missing required attributes detected by static scan",
                 "Confirm all mandatory fields have required or aria-required in the rendered DOM.")
+
+    # Interaction and CTA.
+    cta = cta_validation
+    cta_issues = cta["issues"]
+    by_tag = {}
+    for iss in cta_issues:
+        by_tag.setdefault(iss["tag_type"], []).append(iss)
+        
+    def _cta_add(fid, criterion, ttype, rec):
+        hits = by_tag.get(ttype, [])
+        if hits:
+            sample = "; ".join(f"{h['file']}:{h['line']} {h['issue']}" for h in hits[:3])
+            suffix = f" (+{len(hits)-3} more)" if len(hits) > 3 else ""
+            add(fid, "Interaction and CTA", criterion,
+                "Gap", "High", f"{len(hits)} issue(s): {sample}{suffix}", rec)
+        else:
+            add(fid, "Interaction and CTA", criterion,
+                "Pass", "High", f"no issues detected by static scan ({cta.get(ttype + '_count', 0)} tags found)", rec)
+
+    _cta_add("CTA-01", "Working link destinations", "anchor",
+             "Ensure all <a> or <Link> tags have a valid, non-placeholder href (remove '#' or 'javascript:' placeholders and wire to actual routes).")
+    _cta_add("CTA-02", "Explicit button types", "button",
+             "Add type='button' to all <button> tags that are not meant to submit a form, preventing accidental form submissions.")
 
     # Style rules.
     em_total = scan["em_dash"]["total"]
