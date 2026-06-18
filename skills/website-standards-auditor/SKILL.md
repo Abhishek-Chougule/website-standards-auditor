@@ -49,7 +49,7 @@ Run all of these, then collect the results. None of them changes the site.
    ```bash
    python3 scripts/audit_site.py --path <repo-root> --out <workdir>/audit_findings.json
    ```
-   It scans for em dashes and emojis, checks for `robots.txt`, `sitemap.xml`, `llms.txt`, a custom 404 page, and an offline page, looks for metadata and structured data signals across source and template files, flags external image, video, font, and media references, compares the repository `.gitignore` against the bundled standard, and (when git is present) reports any tracked secret files. It writes structured JSON and prints a human readable summary. Read both.
+   It scans for em dashes and emojis, checks for `robots.txt`, `sitemap.xml`, `llms.txt`, a custom 404 page, and an offline page, looks for metadata and structured data signals across source and template files, flags external image, video, font, and media references, checks form field attributes (types, validation constraints, labels), verifies CTA link destinations and explicit button types, compares the repository `.gitignore` against the bundled standard, and (when git is present) reports any tracked secret files. It writes structured JSON and prints a human readable summary. Read both.
 3. **Apply the git policy.** Read `references/git_policy.md` and `references/gitignore_standard.txt`. Confirm a project `.gitignore` exists and contains every required category. Report missing required entries. Never propose removing security, secret, temporary, IDE, AI tooling, or generated file exclusions.
 4. **Do the judgment checks by reading files.** Some criteria need human style judgment that a script cannot give reliably: topic clusters and pillar pages, entity SEO and `sameAs` consistency, internal link structure and orphan pages, content that answers questions directly for AEO and GEO, and whether `README.md` actually reflects the current project. Read the relevant files and form findings.
 5. **Inspect the live site if a URL was given.** Fetch the served HTML and headers. Confirm that tags present in source actually render, and check response level items such as redirects, caching headers, and compression.
@@ -103,7 +103,8 @@ Work in this order so the riskiest and most foundational items land first:
    - Fill only the placeholders the user supplies. Do not invent or fabricate legal text. List all missing values (data controller name, contact email, DPA details, cookie policy, retention periods for privacy; legal entity name, governing jurisdiction, liability cap for terms) under "Information required from user".
    - Wire both pages to the framework's routing and link them from the site footer, side by side.
 6. **Performance, caching, and mobile.** Core Web Vitals fixes, image and asset optimization, lazy loading, caching and compression per PERF-02 and PERF-05, and responsive and tap target fixes.
-7. **LLMO, AISEO, and E-E-A-T fixes (approved items only).**
+7. **Form validation and CTA fixes (FORM, CTA).** Add correct semantic types (`email`, `tel`, `date`), validation constraints (`min`, `max`, `maxlength`, `required`), and label associations for forms. Add `href` to anchor tags and `type="button"` to non-submitting buttons.
+8. **LLMO, AISEO, and E-E-A-T fixes (approved items only).**
    - LLMO-01/LLMO-02: restructure content headings and opening paragraphs; update `llms.txt` to include a name line, one-line description, and curated page links.
    - LLMO-03: add `<cite>` elements and `cite` attributes to blockquotes on factual pages.
    - AISEO-01/AISEO-02: add FAQ sections or inline answers for conversational queries; rewrite sections to be independently readable.
@@ -111,8 +112,8 @@ Work in this order so the riskiest and most foundational items land first:
    - EEAT-02: add author bylines and `Person` JSON-LD with `name`, `url`, and `sameAs` links; link author names to bio pages.
    - EEAT-03: complete `sameAs` on the Organization node; ensure consistent naming across pages and schema.
    - EEAT-04: force HTTPS in canonical URLs; add or complete the privacy page (RESIL-04), contact page, and about page; fix any mixed content by self-hosting the offending resource.
-8. **Content and style rules.** Replace every em dash following the rule in the "Em dash and emoji handling" section below. Replace emojis with icons.
-9. **Optional items, only if approved.** Open Graph, Twitter cards, brand mentions, Google Search Console, Google Analytics, and conversion tracking.
+9. **Content and style rules.** Replace every em dash following the rule in the "Em dash and emoji handling" section below. Replace emojis with icons.
+10. **Optional items, only if approved.** Open Graph, Twitter cards, brand mentions, Google Search Console, Google Analytics, and conversion tracking.
 
 Use the templates in `assets/` (`schema_templates.md`, `robots_txt_template.txt`, `llms_txt_template.md`, `offline_page_template.html`, `not_found_template.html`). Fill them with real values supplied by the user. Never leave a placeholder like `YOUR_DOMAIN` in a shipped file. Match the project's framework: put head tags where that framework expects them rather than dropping raw HTML into a component tree. After each group, re-run the relevant part of `scripts/audit_site.py` to confirm the gap is closed.
 
