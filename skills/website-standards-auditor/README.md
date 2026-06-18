@@ -5,7 +5,7 @@ An Agent Skill that audits any website (new, in development, or already live) ag
 ## What it covers
 
 - Engineering and content rules: never assume, never use the em dash, always keep `.gitignore` and `README.md` current, and never change existing UI/UX when fixing.
-- Git policy: a project `.gitignore` based on the organization standard, with no tracked secrets.
+- Git policy: a project `.gitignore` based on the organization standard (covers OS files, secrets, IDE, Node, Python, Docker, temp, build artifacts, 20+ AI coding tools, and skill-generated output files), with no tracked secrets.
 - Website quality: SEO, GEO, AEO, `llms.txt`, sitemap, robots, metadata, canonical and hreflang, schema and FAQ markup, entity and knowledge graph readiness, internal links and topic clusters, Core Web Vitals, page speed, mobile, Lighthouse, custom 404, offline page, no external media, no emojis, and optional items such as Open Graph, Twitter cards, and analytics.
 - **LLMO and AISEO**: LLM-optimized content structure, AI-readable `llms.txt`, structured citations, conversational intent coverage, and passage-level relevance.
 - **E-E-A-T**: Experience, Expertise, Authoritativeness, and Trustworthiness signals including author bylines, Person schema, `sameAs` entity completeness, HTTPS, and a privacy page.
@@ -20,7 +20,7 @@ An Agent Skill that audits any website (new, in development, or already live) ag
 2. Audit: run `scripts/audit_site.py` for deterministic checks, apply the git policy, and do judgment checks by reading files. For a live URL, also inspect the served HTML and headers. Run Lighthouse when the environment allows.
 3. Write `gap_identification.md` from the template, then stop and wait for approval.
 4. On approval, fix the approved items in priority order, using the templates in `assets/`, filling them with real values supplied by the user.
-5. Reconcile `.gitignore` and `README.md` on every fix run.
+5. Reconcile `.gitignore` (merging the standard, AI tool entries, and skill output exclusions) and `README.md` on every fix run.
 6. Write `fix_summary.md` and present the changed files.
 
 ## Layout
